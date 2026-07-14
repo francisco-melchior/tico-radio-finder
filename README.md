@@ -39,5 +39,5 @@ Este projeto utiliza:
 
     Licença
 
-Este projeto está sob a licença MIT. Sinta-se à vontade para contribuir!
+"Este projeto está sob a licença GNU GPLv3. Sinta-se à vontade para contribuir!"
     
