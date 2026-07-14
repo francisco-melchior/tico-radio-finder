@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import json
+import requests
+import vlc
+import pathlib
+
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLabel, QListWidget, QLineEdit,
+    QMessageBox
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
+
+# =========================================================
+# CONFIGURAÇÕES DO SISTEMA (TFLINUX)
+# =========================================================
+CONFIG_DIR = pathlib.Path.home() / ".config" / "ticoradio"
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+FAVORITES_FILE = CONFIG_DIR / "favoritas.json"
+ICON_PATH = "/usr/share/pixmaps/tico-radio.png"
+
+# =========================================================
+# ESTILO AZUL PETRÓLEO
+# =========================================================
+STYLE = """
+QWidget { background-color: #0d262b; color: #e0f7fa; }
+QLabel#titleLabel { font-size: 24px; font-weight: bold; color: #008080; padding: 10px; qproperty-alignment: AlignCenter; }
+QLineEdit { background-color: #0a1f23; border: 2px solid #008080; border-radius: 15px; padding: 10px; color: #e0f7fa; }
+QPushButton { background: #008080; color: white; border-radius: 12px; padding: 10px; font-weight: bold; }
+QPushButton#playBtn { background: #004d4d; }
+QPushButton#stopBtn { background: #5d4037; }
+QPushButton#favBtn { background: #fbc02d; color: #333; }
+QListWidget { background-color: #0a1f23; border: 1px solid #008080; border-radius: 10px; }
+"""
+
+class RadioFinder(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Tico Radio Finder 2.0")
+        self.setGeometry(200, 200, 700, 600)
+        self.setStyleSheet(STYLE)
+        self.player = vlc.Instance().media_player_new()
+        self.radios = []
+        self.favoritas = self.carregar_favoritas()
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Pesquisar rádio...")
+        # Conexão do Enter para buscar
+        self.search_input.returnPressed.connect(self.buscar)
+        layout.addWidget(self.search_input)
+        
+        btn_layout = QHBoxLayout()
+        self.search_btn = QPushButton("BUSCAR"); self.search_btn.clicked.connect(self.buscar)
+        self.fav_btn = QPushButton("⭐ FAVORITAS"); self.fav_btn.clicked.connect(self.mostrar_favoritas)
+        btn_layout.addWidget(self.search_btn); btn_layout.addWidget(self.fav_btn)
+        layout.addLayout(btn_layout)
+        
+        self.radio_list = QListWidget()
+        layout.addWidget(self.radio_list)
+        
+        ctrl_layout = QHBoxLayout()
+        self.play_btn = QPushButton("▶ PLAY"); self.play_btn.setObjectName("playBtn"); self.play_btn.clicked.connect(self.tocar)
+        self.stop_btn = QPushButton("⏹ STOP"); self.stop_btn.setObjectName("stopBtn"); self.stop_btn.clicked.connect(lambda: self.player.stop())
+        self.add_fav_btn = QPushButton("❤️ FAVORITAR"); self.add_fav_btn.setObjectName("favBtn"); self.add_fav_btn.clicked.connect(self.favoritar)
+        ctrl_layout.addWidget(self.play_btn); ctrl_layout.addWidget(self.stop_btn); ctrl_layout.addWidget(self.add_fav_btn)
+        layout.addLayout(ctrl_layout)
+        self.setLayout(layout)
+
+    def buscar(self):
+        termo = self.search_input.text()
+        try:
+            resp = requests.get(f"https://de1.api.radio-browser.info/json/stations/search?name={termo}", 
+                                headers={'User-Agent': 'TicoRadio/2.0'}, timeout=10)
+            self.radios = resp.json()
+            self.radio_list.clear()
+            for r in self.radios: self.radio_list.addItem(r['name'])
+        except: QMessageBox.critical(self, "Erro", "Falha na conexão")
+
+    def tocar(self):
+        i = self.radio_list.currentRow()
+        if i >= 0:
+            self.player.set_media(vlc.Instance().media_new(self.radios[i]['url']))
+            self.player.play()
+
+    def favoritar(self):
+        i = self.radio_list.currentRow()
+        if i >= 0 and self.radios[i] not in self.favoritas:
+            self.favoritas.append(self.radios[i])
+            with open(FAVORITES_FILE, "w", encoding="utf-8") as f: json.dump(self.favoritas, f)
+            QMessageBox.information(self, "Sucesso", "Rádio favoritada!")
+
+    def mostrar_favoritas(self):
+        self.radio_list.clear()
+        self.radios = self.favoritas
+        for r in self.favoritas: self.radio_list.addItem(r['name'])
+
+    def carregar_favoritas(self):
+        return json.loads(FAVORITES_FILE.read_text()) if FAVORITES_FILE.exists() else []
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    w = RadioFinder()
+    w.show()
+    sys.exit(app.exec())
